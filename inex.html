@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>NovaStore</title>
+  <link rel="stylesheet" href="https://unpkg.com/aos@next/dist/aos.css" />
+  <style>
+    :root {
+      --bg-color: #0a0a0a;
+      --text-color: #f0f0f0;
+      --card-bg: #1a1a1a;
+      --border-color: #ff9900;
+      --accent: #ff9900;
+      --hover-glow: rgba(255, 153, 0, 0.5);
+    }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg-color);
+      color: var(--text-color);
+      margin: 0;
+      padding: 0;
+      transition: 0.3s;
+    }
+    .loader {
+      position: fixed;
+      inset: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 9999;
+    }
+    .loader::after {
+      content: 'Loading NovaStore...';
+      color: var(--accent);
+      font-size: 24px;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    header {
+      background: var(--card-bg);
+      padding: 20px 10px;
+      text-align: center;
+      border-bottom: 2px solid var(--border-color);
+      box-shadow: 0 2px 10px var(--hover-glow);
+    }
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    input, select, button {
+      padding: 10px 14px;
+      font-size: 16px;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      background: #111;
+      color: var(--text-color);
+      transition: 0.3s;
+    }
+    input:focus, select:focus, button:hover {
+      outline: none;
+      box-shadow: 0 0 12px var(--hover-glow);
+      transform: scale(1.04);
+    }
+    .products {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      padding: 20px;
+      gap: 20px;
+    }
+    .product {
+      background: var(--card-bg);
+      border: 2px solid var(--border-color);
+      border-radius: 12px;
+      width: 260px;
+      padding: 15px;
+      text-align: center;
+      box-shadow: 0 0 12px var(--hover-glow);
+      transform: rotate(calc(-2deg + (4deg * var(--rand, 0))));
+      transition: transform 0.4s ease, box-shadow 0.3s;
+      position: relative;
+      overflow: hidden;
+    }
+    .product::after {
+      content: '';
+      position: absolute;
+      top: -100%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(120deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+      transform: rotate(30deg);
+      pointer-events: none;
+      transition: all 0.4s ease;
+    }
+    .product:hover::after {
+      top: 100%;
+      left: 100%;
+    }
+    .product:hover {
+      transform: rotate(0deg) scale(1.02);
+      box-shadow: 0 0 20px var(--hover-glow);
+    }
+    .buy-btn, .cancel-btn, .fav-btn, .remove-btn {
+      margin-top: 10px;
+      padding: 10px 15px;
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      background: #0d0d0d;
+      color: var(--accent);
+      font-weight: bold;
+      cursor: pointer;
+      transition: 0.3s;
+    }
+    .buy-btn:hover,
+    .cancel-btn:hover,
+    .fav-btn:hover,
+    .remove-btn:hover {
+      background: var(--accent);
+      color: #000;
+      transform: scale(1.05);
+    }
+    .fav-btn { position: absolute; top: 10px; right: 10px; }
+    .terminal {
+      background: #111;
+      color: var(--accent);
+      font-family: monospace;
+      padding: 20px;
+      margin: 20px auto;
+      max-width: 600px;
+      border: 2px solid var(--border-color);
+      border-radius: 10px;
+      text-align: center;
+    }
+    .settings {
+      text-align: center;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="loader" id="loader"></div>
+  <header>
+    <h1>NovaStore</h1>
+    <div class="controls">
+      <input type="text" id="searchInput" placeholder="Search...">
+      <select id="categorySelect">
+        <option value="all">All</option>
+      </select>
+      <input type="color" id="colorPicker" title="Choose border color">
+      <button onclick="toggleEffects()" id="effectsBtn">Disable Effects</button>
+    </div>
+  </header>
+
+  <div class="products" id="productContainer"></div>
+
+  <div class="terminal">
+    Total: $<span id="total">0.00</span>
+    <button class="buy-btn" onclick="checkout()">Buy All</button>
+    <button class="remove-btn" onclick="clearCart()">Clear Cart</button>
+  </div>
+
+  <script>
+    const loader = document.getElementById('loader');
+    const favorites = new Set(JSON.parse(localStorage.getItem('favorites') || '[]'));
+    const cart = new Map(JSON.parse(localStorage.getItem('cart') || '[]'));
+    const productContainer = document.getElementById('productContainer');
+    const categorySelect = document.getElementById('categorySelect');
+    const searchInput = document.getElementById('searchInput');
+    const totalSpan = document.getElementById('total');
+    const colorPicker = document.getElementById('colorPicker');
+    const effectsBtn = document.getElementById('effectsBtn');
+    let effectsEnabled = true;
+
+    window.addEventListener('load', () => {
+      setTimeout(() => loader.style.display = 'none', 1000);
+    });
+
+    let products = [];
+
+    fetch('https://fakestoreapi.com/products')
+      .then(res => res.json())
+      .then(data => {
+        products = data;
+        populateCategories();
+        renderProducts(products);
+      });
+
+    function populateCategories() {
+      const categories = [...new Set(products.map(p => p.category))];
+      categories.forEach(cat => {
+        const option = document.createElement('option');
+        option.value = cat;
+        option.textContent = cat;
+        categorySelect.appendChild(option);
+      });
+    }
+
+    function renderProducts(list) {
+      productContainer.innerHTML = '';
+      list.forEach(product => {
+        const div = document.createElement('div');
+        div.className = 'product';
+        div.style.setProperty('--rand', Math.random());
+        div.innerHTML = `
+          <img src="${product.image}" alt="${product.title}" style="width:100%;height:180px;object-fit:contain;margin-bottom:10px">
+          <h3>${product.title}</h3>
+          <p><strong>$${product.price}</strong></p>
+          <p>⭐ ${product.rating.rate} (${product.rating.count})</p>
+          <button class="buy-btn">Buy</button>
+          <button class="cancel-btn">Cancel</button>
+          <button class="fav-btn">♥</button>
+        `;
+
+        div.querySelector('.buy-btn').onclick = () => {
+          cart.set(product.id, product.price);
+          updateStorage();
+        };
+
+        div.querySelector('.cancel-btn').onclick = () => {
+          cart.delete(product.id);
+          updateStorage();
+        };
+
+        div.querySelector('.fav-btn').onclick = () => {
+          favorites.has(product.id) ? favorites.delete(product.id) : favorites.add(product.id);
+          updateStorage();
+        };
+
+        productContainer.appendChild(div);
+      });
+    }
+
+    function updateStorage() {
+      localStorage.setItem('cart', JSON.stringify(Array.from(cart.entries())));
+      localStorage.setItem('favorites', JSON.stringify(Array.from(favorites)));
+      const total = Array.from(cart.values()).reduce((a, b) => a + b, 0);
+      totalSpan.textContent = total.toFixed(2);
+    }
+
+    function checkout() {
+      if (cart.size) {
+        alert(`Thank you! You spent $${totalSpan.textContent}`);
+        cart.clear();
+        updateStorage();
+      } else {
+        alert('Cart is empty!');
+      }
+    }
+
+    function clearCart() {
+      cart.clear();
+      updateStorage();
+    }
+
+    function toggleEffects() {
+      effectsEnabled = !effectsEnabled;
+      document.body.classList.toggle('no-effects', !effectsEnabled);
+      effectsBtn.textContent = effectsEnabled ? 'Disable Effects' : 'Enable Effects';
+      document.querySelectorAll('.product').forEach(p => {
+        p.style.boxShadow = effectsEnabled ? '' : 'none';
+        p.style.transform = effectsEnabled ? '' : 'none';
+      });
+    }
+
+    colorPicker.addEventListener('input', e => {
+      const val = e.target.value;
+      document.documentElement.style.setProperty('--border-color', val);
+      document.documentElement.style.setProperty('--accent', val);
+      document.documentElement.style.setProperty('--hover-glow', val + '80');
+    });
+
+    searchInput.addEventListener('input', () => {
+      const q = searchInput.value.toLowerCase();
+      const c = categorySelect.value;
+      const filtered = products.filter(p => (c === 'all' || p.category === c) && p.title.toLowerCase().includes(q));
+      renderProducts(filtered);
+    });
+
+    categorySelect.addEventListener('change', () => {
+      const q = searchInput.value.toLowerCase();
+      const c = categorySelect.value;
+      const filtered = products.filter(p => (c === 'all' || p.category === c) && p.title.toLowerCase().includes(q));
+      renderProducts(filtered);
+    });
+  </script>
+</body>
+</html>
